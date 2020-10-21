@@ -1,5 +1,6 @@
 import itertools
-
+import sklearn.preprocessing
+import numpy as np
 
 class ExhaustivePipeline:
     def __init__(
@@ -41,7 +42,7 @@ class ExhaustivePipeline:
         # First, pre-select features
         features = self.feature_pre_selector(self.df, **self.feature_pre_selector_kwargs)
         df_pre_selected = self.df[features + ["Class", "Dataset", "Dataset type"]]
-
+        datasets = pd.unique(self.df.Dataset)
         # Start iterating over n, k pairs
         for n, k in zip(self.n_k["n"], self.n_k["k"]):
             features = self.feature_selector(df_pre_selected, n, **self.feature_selector_kwargs)
@@ -55,6 +56,29 @@ class ExhaustivePipeline:
 
                 self.preprocessor.fit(X_train, **self.preprocessor_kwargs)
                 X_train = self.preprocessor.transform(X_train)
+
+                clf = SVC(kernel="linear", class_weight="balanced")
+                best_scores, best_params = utils.grid_cv(clf, X_train, y_train, tuned_parameters, scoring, 1)
+
+                clf = SVC(kernel="linear", class_weight="balanced", C=best_params[0], probability=True)
+                clf.fit(X_train, y_train)
+                hits = 0
+                for dataset in datasets:
+                    df_test = df_selected.loc[df_selected["Dataset"] == dataset, feature_subset + ["Class"]]
+                    X_test = df_train.drop(columns=["Class"]).to_numpy()
+                    y_test = df_train["Class"].to_numpy()
+                    X_test = self.preprocessor.transform(X_test)
+
+                    results = utils.test_classifier(clf, X_test, y_test)
+                    if len(list(filter(lambda x: x >= 0.65, results))) == 4:
+                        hits += 1
+
+                    print("\t".join([data[i][3]] + ["{:.2f}".format(v) for v in results]), file=f_out)
+
+                print("\t".join(
+                    ["Summary"] + gs_subset + [str(hits)] + pr_subset + ["{:.2f}".format(v) for v in clf.coef_[0]]),
+                      file=f_out)
+                print("", file=f_out, flush=True)
 
                 # TODO: train classifier (with cross-validated parameters)
                 # TODO: evaluate performance on EACH dataset and store results
@@ -78,6 +102,8 @@ def feature_selector_template(df, n, **kwargs):
     pass
 
 
+
+
 class Preprocessor_template:
     '''
     This class should have three methods:
@@ -86,14 +112,15 @@ class Preprocessor_template:
         -  transform
     Any sklearn classifier preprocessor be suitable
     '''
+
     def __init__(self, **kwargs):
-        pass
+        self.scaler = preprocessing.StandardScaler(**kwargs)
 
     def fit(self, X):
-        pass
+        return self.scaler.fit(X)
 
     def transform(self, X):
-        pass
+        return self.scaler.transform(X)
 
 
 class Classifier_template:
