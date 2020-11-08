@@ -3,6 +3,7 @@ import numpy as np
 
 import itertools
 from multiprocessing import Pool
+from itertools import product
 
 from sklearn.model_selection import StratifiedKFold, GridSearchCV
 from sklearn.metrics import make_scorer
