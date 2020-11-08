@@ -3,12 +3,12 @@ import numpy as np
 
 import itertools
 from multiprocessing import Pool
-from itertools import product
 
 from sklearn.model_selection import StratifiedKFold, GridSearchCV
 from sklearn.metrics import make_scorer
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
+from itertools import product
 
 from FeatureSelectors import t_test
 
@@ -81,7 +81,7 @@ class ExhaustivePipeline:
             # TODO: this loop should be run in multiple processes
             for features_subset in itertools.combinations(features, k):
                 to_processes.append(list(df_selected))
-
+	
             with Pool(self.n_threads) as p:
                 results = p.starmap(self.subsets, product(to_processes, repeat=2))
 
@@ -93,11 +93,13 @@ class ExhaustivePipeline:
         # Convert list to tuple for convinience
 
         # Extract training set
-        df_train = df_selected.loc[df_selected["Dataset type"] == "Training", features_subset + ["Class"]]
-        X_train = df_train.drop(columns=["Class"]).to_numpy()
+        df_train = df_selected.loc[df_selected["Dataset type"] == "Training", list(set(features_subset).intersection(set(df_selected.columns)))]
+        X_train = df_train.drop(columns=["Class", "Dataset", "Dataset type"]).to_numpy()
         y_train = df_train["Class"].to_numpy()
 
+        print(pd.unique(df_train["Class"]))
         # Fit preprocessor and transform training set
+        
         preprocessor = self.preprocessor(**self.preprocessor_kwargs)
         preprocessor.fit(X_train)
         X_train = preprocessor.transform(X_train)
@@ -128,10 +130,10 @@ class ExhaustivePipeline:
         item = {"Features subset": features_subset, "Scores": {}}
         filtration_passed = True
         for dataset, dataset_type in df_selected[["Dataset", "Dataset type"]].drop_duplicates().to_numpy():
-            df_test = df_selected.loc[df_selected["Dataset"] == dataset, features_subset + ["Class"]]
-            X_test = df_test.drop(columns=["Class"]).to_numpy()
+            df_test = df_selected.loc[df_selected["Dataset type"] != "Training", list(set(features_subset).intersection(set(df_selected.columns)))]
+            X_test = df_test.drop(columns=["Class", "Dataset", "Dataset type"]).to_numpy()
             y_test = df_test["Class"].to_numpy()
-
+  
             # Normalize dataset using preprocessor fit on training set
             X_test = preprocessor.transform(X_test)
 
@@ -147,7 +149,7 @@ class ExhaustivePipeline:
                 filtration_passed = False
 
         if filtration_passed:
-            results.append(item)
+            return item
 
 
 def feature_pre_selector_template(df, **kwargs):
@@ -228,7 +230,7 @@ def t_test(df, n, **kwargs):
 if __name__ == "__main__":
     import sys
     df = pd.read_csv(sys.argv[1], sep="\t", index_col=0)
-    n_k = pd.DataFrame({"n": [10], "k": [9]})
+    n_k = pd.DataFrame({"n": [2], "k": [3]})
 
     pipeline = ExhaustivePipeline(df, n_k)
     pipeline.run()
